@@ -247,8 +247,8 @@ const returnedCount = computed(() =>
 
 .borrower-table thead th {
   padding: 8px 10px;
-  background: #3b2f20;
-  color: #ffffff;
+  background: #97704f;
+  color: #000000;
   font-family: 'Nunito', sans-serif;
   font-size: 10px;
   font-weight: 800;
@@ -260,8 +260,8 @@ const returnedCount = computed(() =>
 }
 
 .borrower-table .wd-th {
-  background: #3b2f20;
-  color: #ffffff;
+  background: #97704f;
+  color: #000000;
   border-left: 2px solid rgba(58,122,50,0.3);
 }
 

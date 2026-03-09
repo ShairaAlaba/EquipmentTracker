@@ -746,7 +746,7 @@ body{
   border-radius:3px;
   padding:6px 9px;
   margin-bottom:6px;
-  background: #FFFFC1;
+  background: #FFF5E1;
   page-break-inside:avoid;
 }
 

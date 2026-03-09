@@ -435,7 +435,7 @@ function fleetAvailable(row) {
   align-items: center;
   gap: 10px;
   padding: 11px 18px 10px;
-  background: #3b2f20;
+  background: #97704f;
   flex-wrap: wrap;
 }
 
@@ -450,7 +450,7 @@ function fleetAvailable(row) {
   font-weight: 800;
   letter-spacing: 1.3px;
   text-transform: uppercase;
-  color: #f5ece0;
+  color: #000000;
 }
 
 .avail-panel-sub {
@@ -669,20 +669,20 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #3b2f20;
-  color: #ffffff;
+  background: #97704f;
+  color: #000000;
   border-bottom: 2px solid var(--border);
 }
 
 .new-section thead th.inv-group {
-  background: #3b2f20;
-  color: #ffffff;
+  background: #97704f;
+  color: #000000;
   border-left: 1px solid var(--border);
 }
 .new-section thead th.inv-group:first-of-type {
   border-left: 2px solid rgb(255, 255, 255);
 }
-.old-section thead th { background: #3b2f20; border-bottom-color: #e8cfc0; }
+.old-section thead th { background: #97704f; border-bottom-color: #e8cfc0; }
 
 tbody tr { border-bottom: 1px solid #ede5da; transition: background 0.15s; }
 tbody tr.equip-row:hover { background: #fdf8f3; }
