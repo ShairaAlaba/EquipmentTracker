@@ -3,7 +3,7 @@
 //  Central state & business logic for the Equipment Tracker
 // ============================================================
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 let _uid = 0
 const uid = () => ++_uid
@@ -67,26 +67,49 @@ export function useRecords() {
     } catch (e) {
       console.error('Failed to load history', e)
     }
+    // Also restore the active daily record if one was in-progress
+    try {
+      const savedActive = localStorage.getItem('eqt_active_record')
+      if (savedActive) {
+        const active = JSON.parse(savedActive)
+        if (active.recordDate) recordDate.value = active.recordDate
+        if (active.newEquipRows && active.newEquipRows.length) newEquipRows.value = active.newEquipRows
+        if (active.oldEquipRows && active.oldEquipRows.length) oldEquipRows.value = active.oldEquipRows
+      }
+    } catch (e) {
+      console.error('Failed to load active record', e)
+    }
   }
 
   function persistHistory() {
     localStorage.setItem('eqt_history', JSON.stringify(history.value))
   }
 
+  function persistActive() {
+    localStorage.setItem('eqt_active_record', JSON.stringify({
+      recordDate: recordDate.value,
+      newEquipRows: JSON.parse(JSON.stringify(newEquipRows.value)),
+      oldEquipRows: JSON.parse(JSON.stringify(oldEquipRows.value)),
+    }))
+  }
+
   // ---- Row operations ----
   function addRow(section) {
     if (section === 'new') newEquipRows.value.push(makeRow())
     else oldEquipRows.value.push(makeRow())
+    persistActive()
   }
 
   function removeRow(section, index) {
     if (section === 'new') newEquipRows.value.splice(index, 1)
     else oldEquipRows.value.splice(index, 1)
+    persistActive()
   }
 
   function clearAll() {
     newEquipRows.value = [makeRow()]
     oldEquipRows.value = [makeRow()]
+    localStorage.removeItem('eqt_active_record')
   }
 
   // ---- Borrower operations ----
@@ -115,6 +138,7 @@ export function useRecords() {
     if (idx >= 0) history.value[idx] = record
     else history.value.push(record)
     persistHistory()
+    persistActive()
     return record
   }
 
@@ -122,6 +146,7 @@ export function useRecords() {
     recordDate.value = record.date
     newEquipRows.value = JSON.parse(JSON.stringify(record.newEquipRows))
     oldEquipRows.value = JSON.parse(JSON.stringify(record.oldEquipRows))
+    persistActive()
   }
 
   function deleteRecord(date) {
@@ -137,6 +162,11 @@ export function useRecords() {
     )
     return count
   }
+
+  // Auto-persist whenever rows or date change (covers inline edits)
+  watch([recordDate, newEquipRows, oldEquipRows], () => {
+    persistActive()
+  }, { deep: true })
 
   const sortedHistory = computed(() =>
     [...history.value].sort((a, b) => b.date.localeCompare(a.date))
