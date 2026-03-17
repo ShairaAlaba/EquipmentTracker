@@ -1,88 +1,58 @@
-// src/composables/useRecords.js
-// ============================================================
-//  Central state & business logic for the Equipment Tracker
-// ============================================================
-
 import { ref, computed, watch } from 'vue'
+import { supabase } from '../lib/supabase.js'
 
 let _uid = 0
 const uid = () => ++_uid
 
-// ---- Factory: blank equipment row ----
 export function makeRow() {
   return {
-    id: uid(),
-    codeNo: '',        // code number typed in the table
-    qty: '',
-    toolName: '',
-    controlNo: '',
-    condition: '',
-    damageNotes: '',
-    accessoriesReturned: null, // true | false | null
-    remarks: '',
-    showBorrowers: false,
-    borrowers: []
+    id: uid(), codeNo: '', qty: '', toolName: '', controlNo: '',
+    condition: '', damageNotes: '', accessoriesReturned: null,
+    remarks: '', showBorrowers: false, borrowers: []
   }
 }
 
-// ---- Factory: blank borrower entry ----
 export function makeBorrower() {
   return {
-    id: uid(),
-    name: '',
-    project: '',
-    // Check-out
-    conditionCheckout: '',
-    conditionCheckoutNotes: '',
-    // Withdrawal
-    withdraw: 0,       // qty withdrawn (number)
-    dateBorrowed: '',
-    timeBorrowed: '',
-    // Return
-    returned: false,   // true once the borrower has returned the item
-    returnDate: '',
-    returnTime: '',
-    // Condition upon return
-    conditionReturn: '',
-    conditionReturnNotes: ''
+    id: uid(), name: '', project: '',
+    conditionCheckout: '', conditionCheckoutNotes: '',
+    withdraw: 0, dateBorrowed: '', timeBorrowed: '',
+    returned: false, returnDate: '', returnTime: '',
+    conditionReturn: '', conditionReturnNotes: ''
   }
 }
 
 export function useRecords() {
-  // ---- Active day ----
-  const recordDate = ref(new Date().toISOString().slice(0, 10))
-
-  // Section A — new / good condition
+  const recordDate   = ref(new Date().toISOString().slice(0, 10))
   const newEquipRows = ref([makeRow()])
-  // Section B — old / damaged
   const oldEquipRows = ref([makeRow()])
+  const history      = ref([])
 
-  // ---- History (persisted in localStorage) ----
-  const history = ref([])
+  // ── Load all history from Supabase ──────────────────────────
+  async function loadHistory() {
+    const { data, error } = await supabase
+      .from('history_records')
+      .select('*')
+      .order('date', { ascending: false })
 
-  function loadHistory() {
+    if (error) { console.error('loadHistory error', error); return }
+
+    history.value = data.map(row => ({
+      date:         row.date,
+      savedAt:      row.saved_at,
+      newEquipRows: row.new_equip_rows || [],
+      oldEquipRows: row.old_equip_rows || [],
+    }))
+
+    // Restore active draft from localStorage (draft never goes to Supabase)
     try {
-      const saved = localStorage.getItem('eqt_history')
-      if (saved) history.value = JSON.parse(saved)
-    } catch (e) {
-      console.error('Failed to load history', e)
-    }
-    // Also restore the active daily record if one was in-progress
-    try {
-      const savedActive = localStorage.getItem('eqt_active_record')
-      if (savedActive) {
-        const active = JSON.parse(savedActive)
-        if (active.recordDate) recordDate.value = active.recordDate
-        if (active.newEquipRows && active.newEquipRows.length) newEquipRows.value = active.newEquipRows
-        if (active.oldEquipRows && active.oldEquipRows.length) oldEquipRows.value = active.oldEquipRows
+      const active = JSON.parse(localStorage.getItem('eqt_active_record') || 'null')
+      if (active) {
+        if (active.recordDate)  recordDate.value   = active.recordDate
+        if (active.newEquipRows?.length) newEquipRows.value = active.newEquipRows
+        if (active.oldEquipRows?.length) oldEquipRows.value = active.oldEquipRows
       }
-    } catch (e) {
-      console.error('Failed to load active record', e)
-    }
-  }
-
-  function persistHistory() {
-    localStorage.setItem('eqt_history', JSON.stringify(history.value))
+    } catch (e) { console.error(e) }
   }
 
   function persistActive() {
@@ -93,7 +63,7 @@ export function useRecords() {
     }))
   }
 
-  // ---- Row operations ----
+  // ── Row operations ───────────────────────────────────────────
   function addRow(section) {
     if (section === 'new') newEquipRows.value.push(makeRow())
     else oldEquipRows.value.push(makeRow())
@@ -112,116 +82,99 @@ export function useRecords() {
     localStorage.removeItem('eqt_active_record')
   }
 
-  // ---- Borrower operations ----
-  function toggleBorrowers(row) {
-    row.showBorrowers = !row.showBorrowers
-  }
+  function toggleBorrowers(row) { row.showBorrowers = !row.showBorrowers }
+  function addBorrower(row)     { row.borrowers.push(makeBorrower()); row.showBorrowers = true }
+  function removeBorrower(row, index) { row.borrowers.splice(index, 1) }
 
-  function addBorrower(row) {
-    row.borrowers.push(makeBorrower())
-    row.showBorrowers = true
-  }
-
-  function removeBorrower(row, index) {
-    row.borrowers.splice(index, 1)
-  }
-
-  // ---- Save / load ----
-  function saveRecord() {
+  // ── Save / Load / Delete ─────────────────────────────────────
+  async function saveRecord() {
     const record = {
-      date: recordDate.value,
-      savedAt: new Date().toISOString(),
-      newEquipRows: JSON.parse(JSON.stringify(newEquipRows.value)),
-      oldEquipRows: JSON.parse(JSON.stringify(oldEquipRows.value))
+      date:          recordDate.value,
+      saved_at:      new Date().toISOString(),
+      new_equip_rows: JSON.parse(JSON.stringify(newEquipRows.value)),
+      old_equip_rows: JSON.parse(JSON.stringify(oldEquipRows.value)),
     }
+
+    const { error } = await supabase
+      .from('history_records')
+      .upsert(record, { onConflict: 'date' })  // update if date exists
+
+    if (error) { console.error('saveRecord error', error); return }
+
+    // Update local history array too
     const idx = history.value.findIndex(r => r.date === recordDate.value)
-    if (idx >= 0) history.value[idx] = record
-    else history.value.push(record)
-    persistHistory()
+    const localRecord = {
+      date: record.date, savedAt: record.saved_at,
+      newEquipRows: record.new_equip_rows,
+      oldEquipRows: record.old_equip_rows,
+    }
+    if (idx >= 0) history.value[idx] = localRecord
+    else history.value.push(localRecord)
+
     persistActive()
-    return record
+    return localRecord
   }
 
   function loadRecord(record) {
-    recordDate.value = record.date
+    recordDate.value   = record.date
     newEquipRows.value = JSON.parse(JSON.stringify(record.newEquipRows))
     oldEquipRows.value = JSON.parse(JSON.stringify(record.oldEquipRows))
     persistActive()
   }
 
-  function deleteRecord(date) {
+  async function deleteRecord(date) {
+    const { error } = await supabase
+      .from('history_records')
+      .delete()
+      .eq('date', date)
+
+    if (error) { console.error('deleteRecord error', error); return }
     history.value = history.value.filter(r => r.date !== date)
-    persistHistory()
   }
 
-  // ---- Computed helpers ----
+  // ── Computed ─────────────────────────────────────────────────
   const totalBorrowers = (record) => {
     let count = 0
-    ;[...(record.newEquipRows || []), ...(record.oldEquipRows || [])].forEach(
-      r => (count += (r.borrowers || []).length)
-    )
+    ;[...(record.newEquipRows || []), ...(record.oldEquipRows || [])]
+      .forEach(r => (count += (r.borrowers || []).length))
     return count
   }
-
-  // Auto-persist whenever rows or date change (covers inline edits)
-  watch([recordDate, newEquipRows, oldEquipRows], () => {
-    persistActive()
-  }, { deep: true })
 
   const sortedHistory = computed(() =>
     [...history.value].sort((a, b) => b.date.localeCompare(a.date))
   )
 
-  // ---- Set of dates that have a saved history record ----
   const savedDates = computed(() => new Set(history.value.map(r => r.date)))
 
-  // ---- True when the active daily record has any non-empty rows ----
   const hasDraft = computed(() => {
-    const hasData = rows => rows.some(r =>
-      r.codeNo || r.toolName || r.borrowers.length > 0
-    )
+    const hasData = rows => rows.some(r => r.codeNo || r.toolName || r.borrowers.length > 0)
     return hasData(newEquipRows.value) || hasData(oldEquipRows.value)
   })
 
-  // ---- Switch active date; auto-load saved record if one exists ----
-  function switchToDate(date) {
+  async function switchToDate(date) {
     const existing = history.value.find(r => r.date === date)
     if (existing) {
-      // Load the saved record for that date into the daily view
-      recordDate.value = existing.date
+      recordDate.value   = existing.date
       newEquipRows.value = JSON.parse(JSON.stringify(existing.newEquipRows || [makeRow()]))
       oldEquipRows.value = JSON.parse(JSON.stringify(existing.oldEquipRows || [makeRow()]))
-      // Ensure at least one blank row per section
       if (!newEquipRows.value.length) newEquipRows.value = [makeRow()]
       if (!oldEquipRows.value.length) oldEquipRows.value = [makeRow()]
     } else {
-      // No saved record — clear rows and set the date
-      recordDate.value = date
+      recordDate.value   = date
       newEquipRows.value = [makeRow()]
       oldEquipRows.value = [makeRow()]
     }
     persistActive()
   }
 
+  watch([recordDate, newEquipRows, oldEquipRows], () => { persistActive() }, { deep: true })
+
   return {
-    recordDate,
-    newEquipRows,
-    oldEquipRows,
-    history,
-    sortedHistory,
-    savedDates,
-    hasDraft,
-    loadHistory,
-    switchToDate,
-    addRow,
-    removeRow,
-    clearAll,
-    toggleBorrowers,
-    addBorrower,
-    removeBorrower,
-    saveRecord,
-    loadRecord,
-    deleteRecord,
-    totalBorrowers
+    recordDate, newEquipRows, oldEquipRows, history,
+    sortedHistory, savedDates, hasDraft,
+    loadHistory, switchToDate,
+    addRow, removeRow, clearAll,
+    toggleBorrowers, addBorrower, removeBorrower,
+    saveRecord, loadRecord, deleteRecord, totalBorrowers
   }
 }
